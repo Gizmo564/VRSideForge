@@ -54,3 +54,6 @@ rookie-master
 *.db
 *.db-journal
 *.sqlite
+
+build-pkg/
+*.pkg
