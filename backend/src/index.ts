@@ -257,7 +257,7 @@ setInterval(async () => {
   if (activeHashes.length > 0) {
     try {
       if (!qbitCookie) await loginQbit();
-      const res = await axios.get('http://localhost:8080/api/v2/torrents/info', {
+      const res = await axios.get('http://127.0.0.1:8080/api/v2/torrents/info', {
         headers: { 'Cookie': qbitCookie },
         timeout: 1500
       });
@@ -279,7 +279,7 @@ setInterval(async () => {
           // Se a árvore de arquivos estiver vazia, tenta buscar do qBit
           if ((!item.fileTree || item.fileTree.length === 0) && qbTorrent.state !== 'metaDL' && qbTorrent.state !== 'allocating') {
             try {
-              const filesRes = await axios.get(`http://localhost:8080/api/v2/torrents/files?hash=${hash}`, {
+              const filesRes = await axios.get(`http://127.0.0.1:8080/api/v2/torrents/files?hash=${hash}`, {
                 headers: { 'Cookie': qbitCookie }
               });
               if (filesRes.data && filesRes.data.length > 0) {
@@ -924,7 +924,7 @@ async function loginQbit() {
   params.append('username', 'admin');
   params.append('password', 'adminadmin');
   
-  const res = await axios.post('http://localhost:8080/api/v2/auth/login', params.toString(), {
+  const res = await axios.post('http://127.0.0.1:8080/api/v2/auth/login', params.toString(), {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
   });
   
@@ -932,6 +932,24 @@ async function loginQbit() {
     qbitCookie = res.headers['set-cookie'][0].split(';')[0];
   }
 }
+
+// Refresh the qBittorrent session when it expires (401/403) and retry once
+axios.interceptors.response.use(
+  (r) => r,
+  async (error: any) => {
+    const cfg = error.config;
+    const status = error.response?.status;
+    const url = String(cfg?.url || '');
+    if (cfg && !cfg._qbRetried && (status === 401 || status === 403) &&
+        url.includes(':8080/api/v2/') && !url.includes('/auth/login')) {
+      cfg._qbRetried = true;
+      await loginQbit();
+      cfg.headers['Cookie'] = qbitCookie;
+      return axios(cfg);
+    }
+    throw error;
+  }
+);
 
 async function startDownloadInBackend(magnet: string, gameId: number) {
   const savepath = globalDownloadPath;
@@ -962,7 +980,7 @@ async function startDownloadInBackend(magnet: string, gameId: number) {
       params.append('urls', magnet);
       params.append('savepath', savepath);
       
-      await axios.post('http://localhost:8080/api/v2/torrents/add', params.toString(), {
+      await axios.post('http://127.0.0.1:8080/api/v2/torrents/add', params.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Cookie': qbitCookie
@@ -1113,7 +1131,7 @@ app.get('/api/torrent/check', async (req, res) => {
     // Check WebUI
     try {
       if (!qbitCookie) await loginQbit();
-      await axios.get('http://localhost:8080/api/v2/app/version', {
+      await axios.get('http://127.0.0.1:8080/api/v2/app/version', {
         headers: { 'Cookie': qbitCookie },
         timeout: 2000
       });
@@ -1135,7 +1153,7 @@ app.get('/api/torrent/status', async (req, res) => {
   let qbitTorrents: any[] = [];
   try {
     if (!qbitCookie) await loginQbit();
-    const torrentsRes = await axios.get('http://localhost:8080/api/v2/torrents/info', {
+    const torrentsRes = await axios.get('http://127.0.0.1:8080/api/v2/torrents/info', {
       headers: { 'Cookie': qbitCookie },
       timeout: 3000
     });
@@ -1181,7 +1199,7 @@ app.post('/api/torrent/action', async (req, res) => {
       default: return res.status(400).json({ error: 'Ação inválida' });
     }
 
-    await axios.post(`http://localhost:8080/api/v2/${endpoint}`, params.toString(), {
+    await axios.post(`http://127.0.0.1:8080/api/v2/${endpoint}`, params.toString(), {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Cookie': qbitCookie
