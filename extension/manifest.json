@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "VRSideForge Cookie Sync",
+  "version": "1.0",
+  "description": "Sends your RuTracker login cookies to your local VRSideForge app (127.0.0.1 only).",
+  "permissions": ["cookies"],
+  "host_permissions": ["https://rutracker.org/*", "http://127.0.0.1:4000/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Send RuTracker cookies to VRSideForge" }
+}

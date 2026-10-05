@@ -1576,3 +1576,34 @@ async function bootstrap() {
 }
 
 bootstrap();
+
+
+// --- Auto-scrape: run the indexer every few hours while the app is open ---
+const AUTO_SCRAPE_ENABLED = process.env.AUTO_SCRAPE !== '0';
+const AUTO_SCRAPE_HOURS = Number(process.env.AUTO_SCRAPE_HOURS || 4);
+const AUTO_SCRAPE_STATE = path.join(process.env.HOME || '.', 'Documents', 'VRSideForge', 'last_scrape.json');
+
+async function maybeAutoScrape() {
+  try {
+    let last = 0;
+    try { last = JSON.parse(fs.readFileSync(AUTO_SCRAPE_STATE, 'utf-8')).last || 0; } catch {}
+    if (Date.now() - last < AUTO_SCRAPE_HOURS * 3600 * 1000) return;
+
+    const check = await checkStoredSession().catch(() => null);
+    if (!check || !check.ok) {
+      console.log('[AutoScrape] Skipped: session invalid or challenged. Log in again (cookies are re-imported automatically if the extension is installed).');
+      return;
+    }
+    // Record the run first so a crash or restart cannot trigger a loop
+    fs.writeFileSync(AUTO_SCRAPE_STATE, JSON.stringify({ last: Date.now() }));
+    console.log('[AutoScrape] Starting scheduled scrape');
+    startScraper();
+  } catch (e: any) {
+    console.warn('[AutoScrape] Error:', e.message);
+  }
+}
+
+if (AUTO_SCRAPE_ENABLED) {
+  setTimeout(maybeAutoScrape, 20000);
+  setInterval(maybeAutoScrape, 30 * 60 * 1000);
+}
