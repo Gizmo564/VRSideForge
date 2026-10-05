@@ -1558,7 +1558,7 @@ async function bootstrap() {
       }
     } catch { shouldOpen = true; }
 
-    if (shouldOpen) {
+    if (shouldOpen && process.env.VRSF_NO_BROWSER !== '1') {
       try {
         fs.writeFileSync(lastOpenPath, Date.now().toString());
         const url = 'http://vrsideforge.local/';
@@ -1578,32 +1578,72 @@ async function bootstrap() {
 bootstrap();
 
 
-// --- Auto-scrape: run the indexer every few hours while the app is open ---
+// --- Auto-scrape: run the indexer every few hours, only while the Mac is idle ---
 const AUTO_SCRAPE_ENABLED = process.env.AUTO_SCRAPE !== '0';
 const AUTO_SCRAPE_HOURS = Number(process.env.AUTO_SCRAPE_HOURS || 4);
+const AUTO_SCRAPE_IDLE_MIN = Number(process.env.AUTO_SCRAPE_IDLE_MIN || 5);
 const AUTO_SCRAPE_STATE = path.join(process.env.HOME || '.', 'Documents', 'VRSideForge', 'last_scrape.json');
+let autoScrapeStartedAt = 0;
+
+/** Seconds since the last keyboard/mouse input (macOS). Returns 0 if it can't be read. */
+function getIdleSeconds(): Promise<number> {
+  return new Promise(resolve => {
+    exec("ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print $NF/1000000000; exit}'", (err, stdout) => {
+      const n = parseFloat(String(stdout).trim());
+      resolve(err || isNaN(n) ? 0 : n);
+    });
+  });
+}
+
+function scraperIsRunning(): boolean {
+  try {
+    const st: any = getStatus();
+    return !!(st && (st.isRunning ?? st.running ?? st.active ?? st.status === 'running'));
+  } catch { return false; }
+}
+
+function writeLastScrape(t: number) {
+  try { fs.writeFileSync(AUTO_SCRAPE_STATE, JSON.stringify({ last: t })); } catch {}
+}
 
 async function maybeAutoScrape() {
   try {
     let last = 0;
     try { last = JSON.parse(fs.readFileSync(AUTO_SCRAPE_STATE, 'utf-8')).last || 0; } catch {}
     if (Date.now() - last < AUTO_SCRAPE_HOURS * 3600 * 1000) return;
+    if (scraperIsRunning()) return;
+
+    const idle = await getIdleSeconds();
+    if (idle < AUTO_SCRAPE_IDLE_MIN * 60) return; // user is active, try again later
 
     const check = await checkStoredSession().catch(() => null);
     if (!check || !check.ok) {
-      console.log('[AutoScrape] Skipped: session invalid or challenged. Log in again (cookies are re-imported automatically if the extension is installed).');
+      console.log('[AutoScrape] Skipped: session invalid or challenged. Sync cookies from Chrome again.');
       return;
     }
-    // Record the run first so a crash or restart cannot trigger a loop
-    fs.writeFileSync(AUTO_SCRAPE_STATE, JSON.stringify({ last: Date.now() }));
-    console.log('[AutoScrape] Starting scheduled scrape');
+    writeLastScrape(Date.now());
+    autoScrapeStartedAt = Date.now();
+    console.log(`[AutoScrape] Idle for ${Math.round(idle / 60)} min, starting scheduled scrape`);
     startScraper();
   } catch (e: any) {
     console.warn('[AutoScrape] Error:', e.message);
   }
 }
 
+// If the user comes back while an auto-scrape is running, stop it and retry at the next idle period
+async function pauseAutoScrapeOnActivity() {
+  if (!autoScrapeStartedAt) return;
+  if (!scraperIsRunning()) { autoScrapeStartedAt = 0; return; }
+  if ((await getIdleSeconds()) < 20) {
+    console.log('[AutoScrape] User is active again, pausing scrape (resumes at next idle period)');
+    stopScraper();
+    autoScrapeStartedAt = 0;
+    writeLastScrape(0);
+  }
+}
+
 if (AUTO_SCRAPE_ENABLED) {
-  setTimeout(maybeAutoScrape, 20000);
-  setInterval(maybeAutoScrape, 30 * 60 * 1000);
+  setTimeout(maybeAutoScrape, 60 * 1000);
+  setInterval(maybeAutoScrape, 5 * 60 * 1000);
+  setInterval(pauseAutoScrapeOnActivity, 15 * 1000);
 }
