@@ -57,6 +57,8 @@ export async function getPage(url?: string, useNewTab: boolean = false, skipCook
     // Always try to load cookies from DB to reflect recent logins
     const db = getDb();
     const session = await db.get('SELECT cookies FROM session WHERE id = 1');
+    const uaRow = await db.get('SELECT user_agent FROM session WHERE id = 1').catch(() => null);
+    if (uaRow && uaRow.user_agent) await page.setUserAgent(uaRow.user_agent);
     if (session && session.cookies) {
       try {
         const cookies = JSON.parse(session.cookies);
@@ -87,5 +89,5 @@ export async function getPage(url?: string, useNewTab: boolean = false, skipCook
 export async function saveCookies(page: Page) {
   const cookies = await page.cookies();
   const db = getDb();
-  await db.run('INSERT OR REPLACE INTO session (id, cookies) VALUES (1, ?)', [JSON.stringify(cookies)]);
+  await db.run('INSERT INTO session (id, cookies) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET cookies = excluded.cookies', [JSON.stringify(cookies)]);
 }

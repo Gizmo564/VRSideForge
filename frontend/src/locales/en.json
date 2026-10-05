@@ -386,7 +386,7 @@
       "description": "Topics listed here are ignored and will not show in the App.",
       "noItems": "No links in the blacklist.",
       "add": "Add",
-      "placeholder": "https://rutracker.me/forum/..."
+      "placeholder": "https://rutracker.org/forum/..."
     },
     "edit": {
       "title": "Edit Game",

@@ -193,7 +193,7 @@ export default function AuthModal({ open, onOpenChange }: { open: boolean, onOpe
                 size="sm" 
                 type="button" 
                 className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1.5"
-                onClick={() => window.open('https://rutracker.me/forum/profile.php?mode=register', '_blank')}
+                onClick={() => window.open('https://rutracker.org/forum/profile.php?mode=register', '_blank')}
               >
                 {t('auth.noAccount')} <span className="underline font-medium">{t('auth.registerNow')}</span>
                 <ExternalLink className="h-3 w-3" />

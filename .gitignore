@@ -46,3 +46,11 @@ Thumbs.db
 
 
 rookie-master
+
+# Local patches and secrets
+*.bak
+*.bak2
+.puppeteer-profile/
+*.db
+*.db-journal
+*.sqlite

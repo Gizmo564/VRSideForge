@@ -39,10 +39,10 @@ export async function loginToRutracker(
         
         console.log('[Auth] Opening fresh login page...');
         try {
-            await page.goto('https://rutracker.me/forum/login.php', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.goto('https://rutracker.org/forum/login.php', { waitUntil: 'domcontentloaded', timeout: 30000 });
         } catch (e: any) {
             console.warn('[Auth] Goto login page timed out, trying with networkidle2...');
-            await page.goto('https://rutracker.me/forum/login.php', { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+            await page.goto('https://rutracker.org/forum/login.php', { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
         }
         activeLoginPage = page;
     }
@@ -213,7 +213,7 @@ export async function loginToRutracker(
         return {
           success: false,
           requiresCaptcha: true,
-          captchaUrl: captchaImg.startsWith('http') ? captchaImg : `https://rutracker.me/forum/${captchaImg}`,
+          captchaUrl: captchaImg.startsWith('http') ? captchaImg : `https://rutracker.org/forum/${captchaImg}`,
           captchaSid: String(capSidInput),
           captchaField: capCodeInputName
         };

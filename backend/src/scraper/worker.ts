@@ -13,7 +13,7 @@ let captchaData: { imageUrl?: string, id?: string } | null = null;
 let resolveCaptcha: ((code: string) => void) | null = null;
 
 /** Parallelism for HTTP requests — much safer than browser tabs */
-const HTTP_CONCURRENCY = 8;
+const HTTP_CONCURRENCY = 2;
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -37,7 +37,7 @@ export async function submitCaptcha(code: string) {
 
 export async function checkSession() {
   try {
-    const page = await getPage('https://rutracker.me/forum/index.php');
+    const page = await getPage('https://rutracker.org/forum/index.php');
     const content = await page.content();
     const $ = cheerio.load(content);
     if ($('#login-box').length > 0) return false;
@@ -240,11 +240,11 @@ export async function startScraper() {
     const db = getDb();
 
     const baseQueries = [
-      { name: 'Oculos Quests games', url: 'https://rutracker.me/forum/tracker.php?f=2420' },
-      { name: 'Deep Archive (All Quest)', url: 'https://rutracker.me/forum/viewforum.php?f=2420' },
-      { name: 'Quest 3S', url: 'https://rutracker.me/forum/tracker.php?f=2420&nm=Quest+3S' },
-      { name: 'VR Meta Quest', url: 'https://rutracker.me/forum/tracker.php?f=2420&nm=VR+Meta+Quest' },
-      { name: 'Quest 3', url: 'https://rutracker.me/forum/tracker.php?f=2420&nm=Quest+3' },
+      { name: 'Oculos Quests games', url: 'https://rutracker.org/forum/tracker.php?f=2420' },
+      { name: 'Deep Archive (All Quest)', url: 'https://rutracker.org/forum/viewforum.php?f=2420' },
+      { name: 'Quest 3S', url: 'https://rutracker.org/forum/tracker.php?f=2420&nm=Quest+3S' },
+      { name: 'VR Meta Quest', url: 'https://rutracker.org/forum/tracker.php?f=2420&nm=VR+Meta+Quest' },
+      { name: 'Quest 3', url: 'https://rutracker.org/forum/tracker.php?f=2420&nm=Quest+3' },
     ];
 
     // Build the HTTP session from saved cookies once
@@ -278,7 +278,7 @@ export async function startScraper() {
             const link = $(el).find('a.tLink').attr('href');
             const size = $(el).find('a.tr-dl').text().replace('↓', '').trim();
             if (link) {
-              const fullUrl = link.startsWith('http') ? link : `https://rutracker.me/forum/${link}`;
+              const fullUrl = link.startsWith('http') ? link : `https://rutracker.org/forum/${link}`;
               rawItems.push({ link: fullUrl, size });
             }
           });
@@ -289,7 +289,7 @@ export async function startScraper() {
           topicLinks.each((_, el) => {
             const link = $(el).attr('href');
             if (link) {
-              const fullUrl = link.startsWith('http') ? link : `https://rutracker.me/forum/${link}`;
+              const fullUrl = link.startsWith('http') ? link : `https://rutracker.org/forum/${link}`;
               rawItems.push({ link: fullUrl, size: 'Unknown' });
             }
           });

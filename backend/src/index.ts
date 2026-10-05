@@ -367,42 +367,88 @@ app.post('/api/inventory/remove', (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/api/session/validate', async (req, res) => {
-  // Opens non-headless browser to let user authenticate on Rutracker
+// Only one manual-login window at a time; concurrent/retried calls share it
+let validateInFlight: Promise<{ success: boolean; message: string }> | null = null;
+
+async function runManualLogin(): Promise<{ success: boolean; message: string }> {
   try {
     const browser = await launchBrowser(false); // non-headless
     const page = await browser.newPage();
-    await page.goto('https://rutracker.me/forum/login.php', { waitUntil: 'domcontentloaded' });
+    await page.goto('https://rutracker.org/forum/login.php', { waitUntil: 'domcontentloaded' });
     console.log('[Auth] Opening browser window for manual login. Waiting for user...');
-    
-    // We wait for the user to login manually. They will be redirected to profile or index
-    let loggedIn = false;
-    for (let i = 0; i < 180; i++) { // Increase wait to 3 minutes
+
+    for (let i = 0; i < 180; i++) {
       if (page.isClosed()) {
         console.log('[Auth] Browser window closed by user.');
-        break;
+        return { success: false, message: 'Browser window was closed' };
       }
       const url = page.url();
       const content = await page.content().catch(() => '');
-      
-      // Detection of success: URL changed or logout link visible
       if (!url.includes('login.php') && (content.includes('logout') || content.includes('Выход') || content.includes('profile.php'))) {
         console.log('[Auth] Manual login detected! Saving cookies.');
         await saveCookies(page);
-        loggedIn = true;
-        break;
+        return { success: true, message: 'Login successful' };
       }
       await new Promise(r => setTimeout(r, 1000));
     }
-    
-    if (loggedIn) {
-      await closeBrowser();
-      res.json({ success: true, message: 'Login successful' });
-      return;
+    return { success: false, message: 'Login timeout or failed' };
+  } finally {
+    await closeBrowser().catch(() => {});
+  }
+}
+
+app.get('/api/session/validate', async (req, res) => {
+  try {
+    const existing = await checkStoredSession().catch(() => null);
+    if (existing && existing.ok) return res.json({ success: true, message: 'Session valid' });
+    if (!validateInFlight) {
+      validateInFlight = runManualLogin().finally(() => { validateInFlight = null; });
     }
-    
-    await closeBrowser();
-    res.json({ success: false, message: 'Login timeout or failed' });
+    const result = await validateInFlight;
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const DEFAULT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
+/** Checks the stored cookies with a plain HTTP request (no browser). */
+async function checkStoredSession(): Promise<{ ok: boolean; challenged: boolean; status: number }> {
+  const { getDb } = await import('./db/sqlite');
+  const db = getDb();
+  const row = await db.get('SELECT cookies FROM session WHERE id = 1').catch(() => null);
+  if (!row || !row.cookies) return { ok: false, challenged: false, status: 0 };
+  const uaRow = await db.get('SELECT user_agent FROM session WHERE id = 1').catch(() => null);
+  const ua = (uaRow && uaRow.user_agent) || DEFAULT_UA;
+  const cookies = JSON.parse(row.cookies) as any[];
+  const header = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+  const r = await fetch('https://rutracker.org/forum/index.php', { headers: { cookie: header, 'user-agent': ua } });
+  const html = await r.text();
+  const challenged = html.includes('Just a moment') || r.status === 403 || r.status === 503;
+  const ok = !challenged && !html.includes('name="login_username"') && /logged-in-username|Выход|logout/.test(html);
+  return { ok, challenged, status: r.status };
+}
+
+app.post('/api/session/import-cookies', async (req, res) => {
+  try {
+    const { bb_session, cf_clearance, userAgent } = req.body || {};
+    if (!bb_session) return res.status(400).json({ error: 'bb_session is required' });
+    const mk = (name: string, value: string, httpOnly: boolean) =>
+      ({ name, value, domain: '.rutracker.org', path: '/', httpOnly, secure: true });
+    const cookies = [mk('bb_session', bb_session, true)];
+    if (cf_clearance) cookies.push(mk('cf_clearance', cf_clearance, true));
+
+    const { getDb } = await import('./db/sqlite');
+    const db = getDb();
+    await db.run('ALTER TABLE session ADD COLUMN user_agent TEXT').catch(() => {});
+    await db.run(
+      'INSERT INTO session (id, cookies, user_agent) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET cookies = excluded.cookies, user_agent = excluded.user_agent',
+      [JSON.stringify(cookies), userAgent || null]
+    );
+    const check = await checkStoredSession();
+    console.log('[Auth] Cookies imported. Verified:', check);
+    res.json({ success: check.ok, ...check });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

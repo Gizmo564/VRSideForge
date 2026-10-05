@@ -14,6 +14,8 @@ let axiosInstance: AxiosInstance | null = null;
 export async function buildAxiosSession(): Promise<AxiosInstance> {
   const db = getDb();
   const session = await db.get('SELECT cookies FROM session WHERE id = 1');
+  const uaRow = await db.get('SELECT user_agent FROM session WHERE id = 1').catch(() => null);
+  const userAgent = (uaRow && uaRow.user_agent) || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
   let cookieHeader = '';
   if (session && session.cookies) {
@@ -22,15 +24,15 @@ export async function buildAxiosSession(): Promise<AxiosInstance> {
   }
 
   axiosInstance = axios.create({
-    baseURL: 'https://rutracker.me/forum',
+    baseURL: 'https://rutracker.org/forum',
     timeout: 30000,
     responseType: 'arraybuffer',
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'User-Agent': userAgent,
       'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7', 
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
       'Connection': 'keep-alive',
-      'Referer': 'https://rutracker.me/forum/',
+      'Referer': 'https://rutracker.org/forum/',
       'Cookie': cookieHeader,
     }
   });
@@ -49,11 +51,11 @@ export async function fetchPostDetailsHttp(url: string, retries = 3) {
   let htmlUTF8 = '';
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await client.get(url.replace('https://rutracker.me/forum', ''));
+      const res = await client.get(url.replace('https://rutracker.org/forum', ''));
       htmlUTF8 = iconv.decode(Buffer.from(res.data), 'win1251');
       break;
     } catch (err: any) {
-      if (attempt === retries) throw err;
+      if (attempt === retries || err?.response?.status === 403) throw err;
       await new Promise(r => setTimeout(r, 1500 * attempt));
     }
   }
